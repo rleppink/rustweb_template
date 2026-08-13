@@ -1,0 +1,58 @@
+name: rustweb
+
+services:
+  # Postgres for both the dev loop and host-side `cargo run`/tests.
+  # Note: postgres 18 moved PGDATA from /var/lib/postgresql/data into
+  # /var/lib/postgresql itself, so the volume mounts the whole directory.
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: rustweb
+      POSTGRES_PASSWORD: rustweb
+      POSTGRES_DB: rustweb
+    ports:
+      # Host port; override with POSTGRES_PORT in .env.
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rustweb -d rustweb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Dev loop: toolchain image with cargo watch, source bind-mounted.
+  # Started with `just dev` (foreground). Not for production.
+  dev:
+    build:
+      context: .
+      dockerfile: docker/dev.Dockerfile
+    command: dev-loop
+    # Reap zombies + forward Ctrl-C to the cargo watch process tree.
+    init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # The dev service reaches postgres by its compose service name; the host
+      # `.env` DATABASE_URL (localhost) is deliberately ignored in-container.
+      DATABASE_URL: postgres://rustweb:rustweb@postgres:5432/rustweb
+    ports:
+      # Host port; override with PORT in .env (defaults to 3000).
+      - "${PORT:-3000}:3000"
+    volumes:
+      - ./src:/app/src
+      - ./migration:/app/migration
+      - ./tools:/app/tools
+      - ./Cargo.toml:/app/Cargo.toml
+      - ./Cargo.lock:/app/Cargo.lock
+      # Persist in-container rebuilds across container recreation. Seeds from
+      # the image's prebuilt target on first use; afterwards it shadows image
+      # rebuilds, so after a dep change or toolchain bump `just remove` re-primes
+      # it from the image (wiping pg_data too). The build-id dev-loop.sh stores
+      # here is cleared on re-seed, so a stale stub is never served.
+      - dev_target:/app/target
+
+volumes:
+  pg_data:
+  dev_target:

@@ -1,0 +1,12 @@
+target
+# Sources are stubbed in the image and bind-mounted at runtime (compose.yaml);
+# excluding them keeps the build context tiny without affecting the dev loop.
+src
+migration/src
+.git
+rustweb.db*
+.env
+.github
+Justfile
+README.md
+.DS_Store

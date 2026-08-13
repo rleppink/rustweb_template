@@ -1,0 +1,13 @@
+[package]
+name = "tidy"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+# AST-level facts so checks don't false-positive on comments/strings.
+# Stable-only: no nightly, matches the pinned 1.97.1 toolchain.
+syn = { version = "2", features = ["full"] }
+# span-locations exposes Span::start()/end() outside a proc-macro context,
+# which is how tidy reports file:line for each finding.
+proc-macro2 = { version = "1", features = ["span-locations"] }

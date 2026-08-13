@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: rustweb
+          POSTGRES_PASSWORD: rustweb
+          POSTGRES_DB: rustweb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rustweb -d rustweb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # rust-toolchain.toml pins the channel + components.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      # These three are separate: RUSTFLAGS does not cover clippy's lints,
+      # and neither covers rustdoc.
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      # Architecture checks: slice boundaries, wire-format DTOs, OpenAPI
+      # drift. Pure source analysis — no database needed. Adding a route?
+      # Run `cargo run -p tidy -- --update` to regenerate declared_paths.rs.
+      - name: Tidy
+        run: cargo run -p tidy
+
+      - name: Rustdoc
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --all-features
+
+      - name: Test
+        env:
+          DATABASE_URL: postgres://rustweb:rustweb@localhost:5432/rustweb
+        run: cargo test --workspace --all-features
